@@ -22,6 +22,7 @@ const (
 var log *slog.Logger
 
 func main() {
+	log.Info("started auto pstate service")
 	IsRoot()
 	IsPState()
 	SetState()
