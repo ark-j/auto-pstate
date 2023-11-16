@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/godbus/dbus/v5"
+	"github.com/lmittmann/tint"
 )
 
 const (
@@ -29,10 +30,7 @@ func main() {
 }
 
 func init() {
-	h := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		AddSource: true,
-		Level:     slog.LevelInfo,
-	})
+	h := tint.NewHandler(os.Stdout, &tint.Options{Level: slog.LevelInfo})
 	log = slog.New(h)
 }
 
