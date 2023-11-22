@@ -26,6 +26,8 @@ func main() {
 	log.Info("started auto pstate service")
 	IsRoot()
 	IsPState()
+	SetGoverner()
+	FirstBoot()
 	SetState()
 }
 
@@ -50,6 +52,30 @@ func IsPState() {
 	if strings.TrimSpace(string(b)) != "amd-pstate-epp" {
 		log.Error("system is not running amd-pstate-epp")
 	}
+}
+
+// execute only when laptop boots
+// or service restarted
+func FirstBoot() {
+	switch charging() {
+	case true:
+		SetEPP(eppStateAC)
+		log.Info("epp state set to balance_performance")
+	case false:
+		SetEPP(eppStateBat)
+		log.Info("epp state set to power")
+	}
+}
+
+// polling sysfs it checks wether devices on charging
+func charging() bool {
+	batPath := "/sys/class/power_supply/AC/online"
+	b, err := os.ReadFile(batPath)
+	if err != nil {
+		slog.Warn("file not found for AC")
+		os.Exit(1)
+	}
+	return strings.TrimSpace(string(b)) == "1"
 }
 
 // set the powersave governer if not already set
