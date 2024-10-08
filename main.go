@@ -46,7 +46,7 @@ func IsRoot() {
 func IsPState() {
 	b, err := os.ReadFile(scalingDriverPath)
 	if err != nil {
-		log.Error("file does not exists for scaling driver", err)
+		log.Error("file does not exists for scaling driver", slog.String("err", err.Error()))
 	}
 	if strings.TrimSpace(string(b)) != "amd-pstate-epp" {
 		log.Error("system is not running amd-pstate-epp")
@@ -99,7 +99,12 @@ func SetEPP(val string) {
 	for i := 0; i < runtime.NumCPU(); i++ {
 		err := os.WriteFile(fmt.Sprintf(eppPath, i), []byte(val), os.ModePerm)
 		if err != nil {
-			log.Error("while setting epp_value", slog.String("value", val), slog.Int("core", i), slog.String("err", err.Error()))
+			log.Error(
+				"while setting epp_value",
+				slog.String("value", val),
+				slog.Int("core", i),
+				slog.String("err", err.Error()),
+			)
 			continue
 		}
 	}
@@ -110,7 +115,7 @@ func SetState() {
 	// after first run whenever charhing changes so does our epp-state
 	conn, err := dbus.SystemBus()
 	if err != nil {
-		log.Error("unable to connect to system bus", err)
+		log.Error("unable to connect to system bus", slog.String("err", err.Error()))
 		return
 	}
 	defer conn.Close()
