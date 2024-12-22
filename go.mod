@@ -1,4 +1,4 @@
-module github.com/jayesh6297/auto-pstate
+module github.com/ark-j/auto-pstate
 
 go 1.21.4
 
