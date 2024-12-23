@@ -13,6 +13,6 @@ const (
 )
 
 const (
-	auto   = "auto"
-	manual = "manual"
+	AutoMode   = "auto"
+	ManualMode = "manual"
 )

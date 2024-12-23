@@ -9,10 +9,11 @@ import (
 )
 
 type EPP struct {
-	watcher    *Watcher
+	Watcher    *Watcher
 	halt, stop chan struct{}
-	mode       string
+	Mode       string
 	timer      *time.Timer
+	closed     bool
 }
 
 func NewEPP(mode string) *EPP {
@@ -23,26 +24,20 @@ func NewEPP(mode string) *EPP {
 	}
 	e := &EPP{
 		halt:    make(chan struct{}),
-		mode:    mode,
-		watcher: w,
+		Mode:    mode,
+		Watcher: w,
 	}
 	go e.SetState()
 	return e
 }
 
-// EnableManual enables manual mode
-// it is needed to run WithTimer method
-func (e *EPP) EnableManual() {
-	e.mode = manual
-}
-
 // WithTimer will set governor and profile for said amount of Duration.
-// It will be nop if mode is auto
+// It will only be set in automode, on maunal mode it is nop
 func (e *EPP) WithTimer(d time.Duration, governor, profile string) {
-	if e.mode == manual {
+	if e.Mode == AutoMode {
 		e.halt <- struct{}{}
 		setGoverner(governor)
-		setEPP(profile, manual)
+		setEPP(profile, ManualMode)
 		t := time.NewTimer(d)
 		e.timer = t
 	}
@@ -51,9 +46,9 @@ func (e *EPP) WithTimer(d time.Duration, governor, profile string) {
 // WithManual will set governor and profile until service os restarted.
 // It will be nop if mode is auto
 func (e *EPP) WithManual(governor, profile string) {
-	if e.mode == manual {
+	if e.Mode == ManualMode {
 		setGoverner(governor)
-		setEPP(profile, manual)
+		setEPP(profile, ManualMode)
 	}
 }
 
@@ -64,18 +59,18 @@ func (e *EPP) SetState() {
 	setGoverner(defaultGovernor)
 	for {
 		select {
-		case ok := <-e.watcher.ChargeEvent:
+		case ok := <-e.Watcher.ChargeEvent:
 			switch ok {
 			case true:
-				setEPP(defaultEppStateAC, auto)
+				setEPP(defaultEppStateAC, AutoMode)
 			case false:
-				setEPP(defaultEppStateBat, auto)
+				setEPP(defaultEppStateBat, AutoMode)
 			}
 		case <-e.halt:
 			<-e.timer.C
 			e.timer.Stop()
 		case <-e.stop:
-			if err := e.watcher.Close(); err != nil {
+			if err := e.Watcher.Close(); err != nil {
 				slog.Error(err.Error())
 			}
 		}
@@ -84,7 +79,10 @@ func (e *EPP) SetState() {
 
 // Sends close single stop event loop
 func (e *EPP) Close() {
-	e.stop <- struct{}{}
+	if !e.closed {
+		e.stop <- struct{}{}
+		e.closed = true
+	}
 }
 
 // execute only when laptop boots
@@ -92,9 +90,9 @@ func (e *EPP) Close() {
 func firstBoot() {
 	switch charging() {
 	case true:
-		setEPP(defaultEppStateAC, auto)
+		setEPP(defaultEppStateAC, AutoMode)
 	case false:
-		setEPP(defaultEppStateBat, auto)
+		setEPP(defaultEppStateBat, AutoMode)
 	}
 }
 

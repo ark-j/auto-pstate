@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"time"
 )
 
 const SockPath = "/var/run/epp.sock"
@@ -14,11 +15,12 @@ type Server struct {
 	mux     *http.ServeMux
 	srv     *http.Server
 	listner net.Listener
+	epp     *EPP
 }
 
-func NewServer() *Server {
+func NewServer(epp *EPP) *Server {
 	var err error
-	srv := &Server{}
+	srv := &Server{epp: epp}
 	srv.listner, err = net.Listen("unix", SockPath)
 	if err != nil {
 		slog.Error(fmt.Sprintf("unable to start unix socket listner: %v", err))
@@ -41,14 +43,26 @@ func (srv *Server) Start() {
 }
 
 func (srv *Server) Close() {
+	srv.epp.Close()
 	srv.srv.Close()
 	srv.listner.Close()
 }
 
 func (srv *Server) routes() {}
 
-func (srv *Server) ManualHandler(w http.ResponseWriter, r *http.Request) {}
+func (srv *Server) ManualHandler(w http.ResponseWriter, r *http.Request) {
+	srv.epp.Close()
+	srv.epp.Mode = ManualMode
+	srv.epp.WithManual("", "")
+}
 
-func (srv *Server) AutoHandler(w http.ResponseWriter, r *http.Request) {}
+func (srv *Server) AutoHandler(w http.ResponseWriter, r *http.Request) {
+	if srv.epp.Mode == ManualMode {
+		srv.epp.Mode = AutoMode
+		go srv.epp.SetState()
+	}
+}
 
-func (srv *Server) TimerHandler(w http.ResponseWriter, r *http.Request) {}
+func (srv *Server) TimerHandler(w http.ResponseWriter, r *http.Request) {
+	srv.epp.WithTimer(time.Second*1, "", "")
+}

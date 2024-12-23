@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"errors"
 	"syscall"
 	"time"
 	"unsafe"
@@ -10,7 +11,7 @@ type Watcher struct {
 	fd, wd      int
 	ChargeEvent chan bool
 	stop        chan struct{}
-	timer       bool
+	closed      bool
 }
 
 // NewWatcher will create instance of watcher.
@@ -34,11 +35,15 @@ func NewWatcher() (*Watcher, error) {
 
 // Close function sends single to stop readevent loop. Closes Watch and inotify file descriptor.
 func (w *Watcher) Close() error {
-	w.stop <- struct{}{}
-	if _, err := syscall.InotifyRmWatch(w.fd, uint32(w.wd)); err != nil {
-		return err
+	if !w.closed {
+		w.closed = true
+		w.stop <- struct{}{}
+		if _, err := syscall.InotifyRmWatch(w.fd, uint32(w.wd)); err != nil {
+			return err
+		}
+		return syscall.Close(w.fd)
 	}
-	return syscall.Close(w.fd)
+	return errors.New("already closed")
 }
 
 // ReadEvents reads the modify event and send bool over ChargeEvent event channel
