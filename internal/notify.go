@@ -63,7 +63,6 @@ func (w *Watcher) ReadEvents() {
 				ie := (*syscall.InotifyEvent)(unsafe.Pointer(&buf[offset]))
 				mask := ie.Mask
 				if mask&syscall.SYS_MODIFY_LDT != 0 {
-					time.Sleep(500 * time.Millisecond)
 					w.ChargeEvent <- charging()
 				}
 				offset += syscall.SizeofInotifyEvent + ie.Len
