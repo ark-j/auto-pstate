@@ -1,7 +1,10 @@
 package internal
 
 import (
+	"encoding/json"
+	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -87,4 +90,19 @@ func ParseTime(s string) (d time.Duration) {
 		slog.Error("invalid format")
 	}
 	return
+}
+
+// H is used to send dynamic response
+type H map[string]any
+
+// JSON response utils
+func JSON(b any, w http.ResponseWriter, status int) error {
+	w.WriteHeader(status)
+	w.Header().Add("Content-Type", "application/json")
+	return json.NewEncoder(w).Encode(b)
+}
+
+// Bind json body to struct
+func Bind(r io.Reader, m any) error {
+	return json.NewDecoder(r).Decode(m)
 }

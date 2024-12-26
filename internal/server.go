@@ -1,7 +1,7 @@
 package internal
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -10,6 +10,21 @@ import (
 )
 
 const SockPath = "/var/run/auto-epp.sock"
+
+type Handler func(w http.ResponseWriter, r *http.Request) error
+
+func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if err := h(w, r); err != nil {
+		if errors.Is(err, AppErr{}) {
+			e := err.(AppErr)
+			if err = JSON(H{"msg": e.Msg}, w, e.StatusCode); err != nil {
+				slog.Error(e.Error())
+			}
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
 
 type Server struct {
 	mux     *http.ServeMux
@@ -42,106 +57,108 @@ func (srv *Server) Start() {
 	}
 }
 
+// Close closes the epp and server. as well as socket
 func (srv *Server) Close() {
 	srv.epp.Close()
 	srv.srv.Close()
 	srv.listner.Close()
 }
 
+// routes function registers the routes
 func (srv *Server) routes() {
-	srv.mux.HandleFunc("/epp/manual", srv.ManualHandler)
-	srv.mux.HandleFunc("/epp/auto", srv.AutoHandler)
-	srv.mux.HandleFunc("/epp/timer", srv.TimerHandler)
+	srv.HandleFunc("/epp/manual", srv.ManualHandler)
+	srv.HandleFunc("/epp/auto", srv.AutoHandler)
+	srv.HandleFunc("/epp/timer", srv.TimerHandler)
 }
 
-// TODO: extract and refactor
-func (srv *Server) ManualHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *Server) HandleFunc(pattern string, h Handler) {
+	srv.mux.Handle(pattern, Handler(h))
+}
+
+func (srv *Server) ManualHandler(w http.ResponseWriter, r *http.Request) error {
 	srv.epp.Close()
 	srv.epp.Mode = ManualMode
 	var m ManualRequest
-	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-		if err = json.NewEncoder(w).Encode(map[string]string{"msg": err.Error()}); err != nil {
-			slog.Error(err.Error())
+	if err := Bind(r.Body, &m); err != nil {
+		return AppErr{
+			Msg:        "invalid body",
+			StatusCode: http.StatusUnprocessableEntity,
+			Err:        err,
 		}
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Header().Set("Content-Type", "application/json")
-		return
 	}
 
 	if !ListAvailable(false)[m.Governor] {
-		w.WriteHeader(http.StatusNotFound)
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]string{"msg": fmt.Sprintf("%s governor is not found", m.Governor)}); err != nil { //nolint
-			slog.Error(err.Error())
+		msg := fmt.Sprintf("%s governor is not found", m.Governor)
+		return AppErr{
+			Msg:        msg,
+			StatusCode: http.StatusUnprocessableEntity,
+			Err:        errors.New(msg),
 		}
-		return
 	}
 
 	if !ListAvailable(true)[m.Profile] {
-		w.WriteHeader(http.StatusNotFound)
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]string{"msg": fmt.Sprintf("%s profile is not found", m.Profile)}); err != nil { //nolint
-			slog.Error(err.Error())
+		msg := fmt.Sprintf("%s profile is not found", m.Profile)
+		return AppErr{
+			Msg:        msg,
+			StatusCode: http.StatusUnprocessableEntity,
+			Err:        errors.New(msg),
 		}
-		return
 	}
+
 	srv.epp.WithManual(m.Governor, m.Profile)
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]any{
+	if err := JSON(H{
 		"msg":      "epp state saved successfully. please renable auto mode or restart reservice",
 		"mode":     ManualMode,
 		"governor": m.Governor,
 		"profile":  m.Profile,
-	}); err != nil {
+	}, w, http.StatusOK); err != nil {
 		slog.Error(err.Error())
 	}
+	return nil
 }
 
-// TODO: extract and refactor
-func (srv *Server) AutoHandler(w http.ResponseWriter, r *http.Request) { //nolint
+func (srv *Server) AutoHandler(w http.ResponseWriter, r *http.Request) error { //nolint
 	if srv.epp.Mode == ManualMode {
 		srv.epp.Mode = AutoMode
 		go srv.epp.SetState()
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]any{"msg": "auto mode enabled"}); err != nil {
+	if err := JSON(H{"msg": "auto mode enabled"}, w, http.StatusOK); err != nil {
 		slog.Error(err.Error())
 	}
+	return nil
 }
 
-// TODO: extract and refactor. add meaningful response and validate duration
-func (srv *Server) TimerHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *Server) TimerHandler(w http.ResponseWriter, r *http.Request) error {
 	var m TimerRequest
-	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-		if err = json.NewEncoder(w).Encode(map[string]string{"msg": err.Error()}); err != nil {
-			slog.Error(err.Error())
+	if err := Bind(r.Body, &m); err != nil {
+		return AppErr{
+			Msg:        "invalid body",
+			StatusCode: http.StatusUnprocessableEntity,
+			Err:        err,
 		}
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Header().Set("Content-Type", "application/json")
-		return
 	}
 
-	if !srv.governors[m.Governor] {
-		w.WriteHeader(http.StatusNotFound)
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]string{"msg": fmt.Sprintf("%s governor is not found", m.Governor)}); err != nil { //nolint
-			slog.Error(err.Error())
+	if !ListAvailable(false)[m.Governor] {
+		msg := fmt.Sprintf("%s governor is not found", m.Governor)
+		return AppErr{
+			Msg:        msg,
+			StatusCode: http.StatusUnprocessableEntity,
+			Err:        errors.New(msg),
 		}
-		return
 	}
 
-	if !srv.profiles[m.Profile] {
-		w.WriteHeader(http.StatusNotFound)
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]string{"msg": fmt.Sprintf("%s profile is not found", m.Profile)}); err != nil { //nolint
-			slog.Error(err.Error())
+	if !ListAvailable(true)[m.Profile] {
+		msg := fmt.Sprintf("%s profile is not found", m.Profile)
+		return AppErr{
+			Msg:        msg,
+			StatusCode: http.StatusUnprocessableEntity,
+			Err:        errors.New(msg),
 		}
-		return
 	}
 
 	srv.epp.WithTimer(m.Duration, m.Governor, m.Profile)
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]any{"msg": "timer mode is enabled"}); err != nil {
+	if err := JSON(H{"msg": "timer mode is enabled"}, w, http.StatusOK); err != nil {
 		slog.Error(err.Error())
 	}
+	return nil
 }
