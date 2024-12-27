@@ -1,8 +1,15 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"crypto/tls"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -42,13 +49,123 @@ func main() {
 		for k := range internal.ListAvailable(true) {
 			fmt.Println(k)
 		}
+		return
 	}
 
 	if listP {
 		for k := range internal.ListAvailable(false) {
 			fmt.Println(k)
 		}
+		return
 	}
+
+	if !internal.ListAvailable(false)[governor] {
+		fmt.Println("invalid governor")
+		os.Exit(1)
+	}
+
+	if !internal.ListAvailable(true)[profile] {
+		fmt.Println("invalid profile")
+		os.Exit(1)
+	}
+}
+
+var client *http.Client
+
+func init() {
+	client = &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(_ context.Context, _ string, _ string) (net.Conn, error) {
+				return net.Dial("unix", internal.SockPath)
+			},
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+		Timeout: 30 * time.Second,
+	}
+}
+
+func Timer(d time.Duration, g, p string) {
+	b, _ := json.Marshal(internal.TimerRequest{ //nolint
+		Duration: d,
+		Governor: g,
+		Profile:  p,
+	})
+	res, err := client.Post("http://localhost:3003/epp/timer", "application/json", bytes.NewReader(b))
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	defer res.Body.Close()
+
+	b, err = io.ReadAll(res.Body)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	if res.Header.Get("Content-Type") == "application/json" && res.StatusCode == http.StatusOK {
+		var m map[string]any
+		if err := json.Unmarshal(b, &m); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		fmt.Println(m["msg"])
+	}
+	fmt.Println(string(b))
+}
+
+func Manual(g, p string) {
+	b, _ := json.Marshal(internal.ManualRequest{ //nolint
+		Governor: g,
+		Profile:  p,
+	})
+	res, err := client.Post("http://localhost:3003/epp/timer", "application/json", bytes.NewReader(b))
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	defer res.Body.Close()
+
+	b, err = io.ReadAll(res.Body)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	if res.Header.Get("Content-Type") == "application/json" && res.StatusCode == http.StatusOK {
+		var m map[string]any
+		if err := json.Unmarshal(b, &m); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		fmt.Println(m["msg"])
+	}
+	fmt.Println(string(b))
+}
+
+func Auto() {
+	res, err := client.Post("http://localhost:3003/epp/timer", "application/json", nil)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	defer res.Body.Close()
+
+	b, err := io.ReadAll(res.Body)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	if res.Header.Get("Content-Type") == "application/json" && res.StatusCode == http.StatusOK {
+		var m map[string]any
+		if err := json.Unmarshal(b, &m); err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		fmt.Println(m["msg"])
+	}
+	fmt.Println(string(b))
 }
 
 func ParseTime(s string) time.Duration {

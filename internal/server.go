@@ -9,7 +9,7 @@ import (
 	"os"
 )
 
-const SockPath = "/var/run/auto-epp.sock"
+const SockPath = "/run/auto-epp/epp.sock"
 
 type Handler func(w http.ResponseWriter, r *http.Request) error
 
@@ -43,6 +43,7 @@ func NewServer(epp *EPP) *Server {
 	}
 	srv.mux = http.NewServeMux()
 	srv.srv = &http.Server{
+		Addr:    "localhost:3003",
 		Handler: srv.mux,
 	}
 	return srv
