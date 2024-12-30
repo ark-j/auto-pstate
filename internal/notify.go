@@ -3,7 +3,6 @@ package internal
 import (
 	"errors"
 	"syscall"
-	"time"
 	"unsafe"
 )
 

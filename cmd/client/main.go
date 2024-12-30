@@ -68,6 +68,19 @@ func main() {
 		fmt.Println("invalid profile")
 		os.Exit(1)
 	}
+
+	if timer != "0.0" {
+		d := ParseTime(timer)
+		Timer(d, governor, profile)
+		return
+	}
+
+	switch mode {
+	case internal.ManualMode:
+		Manual(governor, profile)
+	case internal.AutoMode:
+		Auto()
+	}
 }
 
 var client *http.Client
