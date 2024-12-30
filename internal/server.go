@@ -43,7 +43,7 @@ func NewServer(epp *EPP) *Server {
 	}
 	srv.mux = http.NewServeMux()
 	srv.srv = &http.Server{
-		Addr:    "localhost:3003",
+		Addr:    "127.0.0.1:3003",
 		Handler: srv.mux,
 	}
 	return srv
@@ -52,6 +52,7 @@ func NewServer(epp *EPP) *Server {
 // Start starts the server recommended to launch it in goroutine
 func (srv *Server) Start() {
 	srv.routes()
+	slog.Info(fmt.Sprintf("server started on %s", srv.srv.Addr))
 	if err := srv.srv.Serve(srv.listner); err != nil {
 		slog.Error(err.Error())
 		os.Exit(1)

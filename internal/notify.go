@@ -2,6 +2,8 @@ package internal
 
 import (
 	"errors"
+	"log/slog"
+	"os"
 	"syscall"
 	"unsafe"
 )
@@ -29,6 +31,7 @@ func NewWatcher() (*Watcher, error) {
 	if err != nil {
 		return nil, err
 	}
+	go w.ReadEvents()
 	return w, nil
 }
 
@@ -48,13 +51,16 @@ func (w *Watcher) Close() error {
 // ReadEvents reads the modify event and send bool over ChargeEvent event channel
 func (w *Watcher) ReadEvents() {
 	var buf [4096]byte
+	f := os.NewFile(uintptr(w.wd), "")
+	defer f.Close()
 	for {
 		select {
 		case <-w.stop:
 			return
 		default:
-			n, err := syscall.Read(w.fd, buf[:])
+			n, err := f.Read(buf[:])
 			if err != nil {
+				slog.Error(err.Error())
 				return
 			}
 			var offset uint32
