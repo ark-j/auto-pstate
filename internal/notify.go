@@ -1,7 +1,6 @@
 package internal
 
 import (
-	"errors"
 	"log/slog"
 	"os"
 	"syscall"
@@ -12,7 +11,7 @@ type Watcher struct {
 	fd, wd      int
 	ChargeEvent chan bool
 	stop        chan struct{}
-	closed      bool
+	isClosed    bool
 }
 
 // NewWatcher will create instance of watcher.
@@ -37,22 +36,26 @@ func NewWatcher() (*Watcher, error) {
 
 // Close function sends single to stop readevent loop. Closes Watch and inotify file descriptor.
 func (w *Watcher) Close() error {
-	if !w.closed {
-		w.closed = true
+	if !w.isClosed {
+		w.isClosed = true
+		slog.Info("closing event watcher")
 		w.stop <- struct{}{}
 		if _, err := syscall.InotifyRmWatch(w.fd, uint32(w.wd)); err != nil {
 			return err
 		}
 		return syscall.Close(w.fd)
 	}
-	return errors.New("already closed")
+	return nil
 }
 
 // ReadEvents reads the modify event and send bool over ChargeEvent event channel
+// it uses loop counter toggle as technique to avoid repeate event handling due to
+// the nature of inotify generating SYS_MODIFY_LDT even after read
 func (w *Watcher) ReadEvents() {
 	var buf [4096]byte
-	f := os.NewFile(uintptr(w.wd), "")
+	f := os.NewFile(uintptr(w.fd), "")
 	defer f.Close()
+	next := false
 	for {
 		select {
 		case <-w.stop:
@@ -67,9 +70,10 @@ func (w *Watcher) ReadEvents() {
 			for offset < uint32(n) {
 				ie := (*syscall.InotifyEvent)(unsafe.Pointer(&buf[offset]))
 				mask := ie.Mask
-				if mask&syscall.SYS_MODIFY_LDT != 0 {
+				if mask&syscall.SYS_MODIFY_LDT != 0 && next {
 					w.ChargeEvent <- charging()
 				}
+				next = !next
 				offset += syscall.SizeofInotifyEvent + ie.Len
 			}
 		}

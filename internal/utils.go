@@ -97,8 +97,8 @@ type H map[string]any
 
 // JSON response utils
 func JSON(b any, w http.ResponseWriter, status int) error {
-	w.WriteHeader(status)
 	w.Header().Add("Content-Type", "application/json")
+	w.WriteHeader(status)
 	return json.NewEncoder(w).Encode(b)
 }
 

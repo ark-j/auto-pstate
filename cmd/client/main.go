@@ -11,8 +11,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/ark-j/auto-pstate/internal"
@@ -30,17 +28,11 @@ ex. 1.5 will set timer for 1 hour 15 minutes 1.0 will set for 1 hour and 0.15 wi
 )
 
 func main() {
-	var governor, profile, mode, timer string
+	var governor, profile, mode string
 	var listG, listP bool
 	flag.StringVar(&mode, "m", "auto", modeDesc)
 	flag.StringVar(&governor, "g", "powersave", governorDesc)
 	flag.StringVar(&profile, "p", "balance_power", profileDesc)
-	flag.StringVar(
-		&timer,
-		"t",
-		"0.0",
-		timerDesc,
-	)
 	flag.BoolVar(&listP, "list_profiles", false, listGDesc)
 	flag.BoolVar(&listG, "list_governors", false, listPDesc)
 	flag.Parse()
@@ -59,6 +51,11 @@ func main() {
 		return
 	}
 
+	if mode == internal.AutoMode {
+		Auto()
+		return
+	}
+
 	if !internal.ListAvailable(false)[governor] {
 		fmt.Println("invalid governor")
 		os.Exit(1)
@@ -69,17 +66,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	if timer != "0.0" {
-		d := ParseTime(timer)
-		Timer(d, governor, profile)
-		return
-	}
-
-	switch mode {
-	case internal.ManualMode:
+	if mode == internal.ManualMode {
 		Manual(governor, profile)
-	case internal.AutoMode:
-		Auto()
 	}
 }
 
@@ -97,42 +85,12 @@ func init() {
 	}
 }
 
-func Timer(d time.Duration, g, p string) {
-	b, _ := json.Marshal(internal.TimerRequest{ //nolint
-		Duration: d,
-		Governor: g,
-		Profile:  p,
-	})
-	res, err := client.Post("http://localhost:3003/epp/timer", "application/json", bytes.NewReader(b))
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	defer res.Body.Close()
-
-	b, err = io.ReadAll(res.Body)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	if res.Header.Get("Content-Type") == "application/json" && res.StatusCode == http.StatusOK {
-		var m map[string]any
-		if err := json.Unmarshal(b, &m); err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-		fmt.Println(m["msg"])
-	}
-	fmt.Println(string(b))
-}
-
 func Manual(g, p string) {
 	b, _ := json.Marshal(internal.ManualRequest{ //nolint
 		Governor: g,
 		Profile:  p,
 	})
-	res, err := client.Post("http://localhost:3003/epp/timer", "application/json", bytes.NewReader(b))
+	res, err := client.Post("http://localhost:3003/epp/manual", "application/json", bytes.NewReader(b))
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -152,12 +110,13 @@ func Manual(g, p string) {
 			os.Exit(1)
 		}
 		fmt.Println(m["msg"])
+		return
 	}
 	fmt.Println(string(b))
 }
 
 func Auto() {
-	res, err := client.Post("http://localhost:3003/epp/timer", "application/json", nil)
+	res, err := client.Post("http://localhost:3003/epp/auto", "application/json", nil)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -177,26 +136,7 @@ func Auto() {
 			os.Exit(1)
 		}
 		fmt.Println(m["msg"])
+		return
 	}
 	fmt.Println(string(b))
-}
-
-func ParseTime(s string) time.Duration {
-	arr := strings.Split(s, ".")
-	if len(arr) != 2 {
-		fmt.Println("invalid format please enter in H.M or HH.MM format")
-	}
-	h, err := strconv.Atoi(arr[0])
-	if err != nil {
-		fmt.Println("invalid hour format")
-		os.Exit(1)
-	}
-	m, err := strconv.Atoi(arr[1])
-	if err != nil {
-		fmt.Println("invalid minute format")
-		os.Exit(1)
-	}
-	hour := time.Hour * time.Duration(h)
-	minute := time.Minute * time.Duration(m)
-	return hour + minute
 }

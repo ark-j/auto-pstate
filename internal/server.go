@@ -54,8 +54,11 @@ func (srv *Server) Start() {
 	srv.routes()
 	slog.Info(fmt.Sprintf("server started on %s", srv.srv.Addr))
 	if err := srv.srv.Serve(srv.listner); err != nil {
+		if errors.Is(err, http.ErrServerClosed) {
+			slog.Warn("server shutdown")
+			return
+		}
 		slog.Error(err.Error())
-		os.Exit(1)
 	}
 }
 
@@ -70,7 +73,6 @@ func (srv *Server) Close() {
 func (srv *Server) routes() {
 	srv.HandleFunc("/epp/manual", srv.ManualHandler)
 	srv.HandleFunc("/epp/auto", srv.AutoHandler)
-	srv.HandleFunc("/epp/timer", srv.TimerHandler)
 }
 
 func (srv *Server) HandleFunc(pattern string, h Handler) {
@@ -122,44 +124,10 @@ func (srv *Server) ManualHandler(w http.ResponseWriter, r *http.Request) error {
 func (srv *Server) AutoHandler(w http.ResponseWriter, r *http.Request) error { //nolint
 	if srv.epp.Mode == ManualMode {
 		srv.epp.Mode = AutoMode
-		go srv.epp.SetState()
+		srv.epp.Start()
+		slog.Info("setting auto mode done")
 	}
 	if err := JSON(H{"msg": "auto mode enabled"}, w, http.StatusOK); err != nil {
-		slog.Error(err.Error())
-	}
-	return nil
-}
-
-func (srv *Server) TimerHandler(w http.ResponseWriter, r *http.Request) error {
-	var m TimerRequest
-	if err := Bind(r.Body, &m); err != nil {
-		return AppErr{
-			Msg:        "invalid body",
-			StatusCode: http.StatusUnprocessableEntity,
-			Err:        err,
-		}
-	}
-
-	if !ListAvailable(false)[m.Governor] {
-		msg := fmt.Sprintf("%s governor is not found", m.Governor)
-		return AppErr{
-			Msg:        msg,
-			StatusCode: http.StatusUnprocessableEntity,
-			Err:        errors.New(msg),
-		}
-	}
-
-	if !ListAvailable(true)[m.Profile] {
-		msg := fmt.Sprintf("%s profile is not found", m.Profile)
-		return AppErr{
-			Msg:        msg,
-			StatusCode: http.StatusUnprocessableEntity,
-			Err:        errors.New(msg),
-		}
-	}
-
-	srv.epp.WithTimer(m.Duration, m.Governor, m.Profile)
-	if err := JSON(H{"msg": "timer mode is enabled"}, w, http.StatusOK); err != nil {
 		slog.Error(err.Error())
 	}
 	return nil
