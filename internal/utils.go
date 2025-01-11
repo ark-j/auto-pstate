@@ -106,3 +106,17 @@ func JSON(b any, w http.ResponseWriter, status int) error {
 func Bind(r io.Reader, m any) error {
 	return json.NewDecoder(r).Decode(m)
 }
+
+func GetPowerPath() string {
+	entries, err := os.ReadDir("/sys/class/power_supply")
+	if err != nil {
+		panic(err)
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if strings.Contains(name, "AC") {
+			return powerPath + name + "/online"
+		}
+	}
+	return ""
+}

@@ -10,6 +10,10 @@ import (
 )
 
 func main() {
+	run()
+}
+
+func run() {
 	internal.SetLogger()
 
 	// prechecks
@@ -29,7 +33,7 @@ func main() {
 }
 
 func createDaemonDir() {
-	if err := os.Mkdir("/run/auto-epp", 0o644); err != nil {
+	if err := os.Mkdir("/run/auto-epp", 0o600); err != nil {
 		if os.IsExist(err) {
 			return
 		}
