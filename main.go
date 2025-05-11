@@ -87,7 +87,11 @@ func SetGoverner() {
 		for i := 0; i < runtime.NumCPU(); i++ {
 			if err := os.WriteFile(fmt.Sprintf(governerPath, i),
 				[]byte("powersave"), os.ModePerm); err != nil {
-				log.Error("while setting powersave governer", slog.Int("core", i), slog.String("err", err.Error()))
+				log.Error(
+					"while setting powersave governer",
+					slog.Int("core", i),
+					slog.String("err", err.Error()),
+				)
 				continue
 			}
 		}
